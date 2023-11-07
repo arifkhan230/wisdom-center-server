@@ -1,23 +1,26 @@
 const express = require('express');
 const cors = require('cors');
-require('dotenv').config();
 const app = express();
+const jwt = require('jsonwebtoken');
+require('dotenv').config();
+const cookieParser = require('cookie-parser')
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 const port = process.env.PORT || 5000;
 
-app.use(express.json())
+
 app.use(cors({
     origin: 'http://localhost:5173',
     credentials: true
 }))
+app.use(express.json())
+app.use(cookieParser())
 
 // wisdom-center
 // 27wtw6g9396ocNp1
 
 
 
-
-const uri = "mongodb+srv://wisdom-center:27wtw6g9396ocNp1@cluster0.cwfli1i.mongodb.net/?retryWrites=true&w=majority";
+const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.cwfli1i.mongodb.net/?retryWrites=true&w=majority`;
 
 // Create a MongoClient with a MongoClientOptions object to set the Stable API version
 const client = new MongoClient(uri, {
@@ -40,6 +43,18 @@ async function run() {
         await client.db("admin").command({ ping: 1 });
 
 
+        // jwt related api
+        app.post('/jwt',async(req,res)=>{
+            const user = req.body;
+            const token = jwt.sign(user,process.env.SECRET_ACCESS_TOKEN, {expiresIn: '1h'})
+            res
+            .cookie('token', token, {
+                httpOnly: true,
+                secure: false
+            })
+            .send({success: true})
+        })
+
 
         // get related api
         app.get('/books-category', async (req, res) => {
@@ -54,6 +69,7 @@ async function run() {
             if (category) {
                 query.category = category
             }
+
             const result = await bookCollection.find(query).toArray();
             res.send(result)
         })
