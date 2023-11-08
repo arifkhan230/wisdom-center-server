@@ -36,6 +36,29 @@ const bookCollection = client.db('libraryDb').collection('books');
 const borrowedBookCollection = client.db('libraryDb').collection('borrowedBooks');
 
 
+// middlewares
+const logger = (req, res, next) => {
+    console.log(req.method, req.url)
+    next()
+}
+
+const verifyToken = (req, res, next) => {
+    const token = req.cookies?.token;
+    if(!token){
+        return res.status(401).send({message: 'unauthorized access'})
+    }
+    jwt.verify(token, process.env.SECRET_ACCESS_TOKEN,(err,decoded)=>{
+        if(err){
+            return res.status(401).send({message: 'unauthorized access'})
+        }
+        else{
+            req.user= decoded
+            next()
+        }
+    })
+}
+
+
 
 async function run() {
     try {
@@ -44,15 +67,21 @@ async function run() {
 
 
         // jwt related api
-        app.post('/jwt',async(req,res)=>{
+        app.post('/jwt', async (req, res) => {
             const user = req.body;
-            const token = jwt.sign(user,process.env.SECRET_ACCESS_TOKEN, {expiresIn: '1h'})
+            const token = jwt.sign(user, process.env.SECRET_ACCESS_TOKEN, { expiresIn: '1h' })
             res
-            .cookie('token', token, {
-                httpOnly: true,
-                secure: false
-            })
-            .send({success: true})
+                .cookie('token', token, {
+                    httpOnly: true,
+                    secure: false
+                })
+                .send({ success: true })
+        })
+
+        app.post('/logout', async(req,res)=>{
+            const user = req.user;
+            console.log(user)
+            res.clearCookie('token', {maxAge: 0}).send({success: true})
         })
 
 
@@ -63,8 +92,9 @@ async function run() {
             res.send(result)
         })
 
-        app.get('/books', async (req, res) => {
+        app.get('/books', logger, verifyToken, async (req, res) => {
             const category = req.query.category;
+            // console.log(req.user)
             let query = {}
             if (category) {
                 query.category = category
@@ -84,8 +114,12 @@ async function run() {
         // all --> /user/borrowed-book
         // email ---> /user/borrowed-book?email=abc@gmail.com
 
-        app.get('/user/borrowed-book', async (req, res) => {
+        app.get('/user/borrowed-book', verifyToken, async (req, res) => {
             const email = req.query.email;
+            console.log(req.user)
+            if(req.user.email !== req.query.email){
+                return res.status(403).send({message: "Access Forbidden"})
+            }
 
             let query = {}
             if (email) {
@@ -97,7 +131,7 @@ async function run() {
 
         // post related api
 
-        app.post('/add-book', async (req, res) => {
+        app.post('/add-book', logger,verifyToken, async (req, res) => {
             const book = req.body;
             const result = await bookCollection.insertOne(book);
             res.send(result)
@@ -105,6 +139,11 @@ async function run() {
 
         app.post('/user/borrowed-book', async (req, res) => {
             const borrowedBook = req.body;
+            console.log(borrowedBook._id)
+            const filter = await borrowedBookCollection.findOne({name: borrowedBook.name})
+            if(filter){
+                return res.status(400).send({message: 'product already exist'})
+            }
             const result = await borrowedBookCollection.insertOne(borrowedBook);
             res.send(result)
 
@@ -150,7 +189,7 @@ async function run() {
             const updateBook = req.body;
             const id = req.params.id;
             console.log(id)
-            const filter = { _id: new ObjectId(id)}
+            const filter = { _id: new ObjectId(id) }
             const options = { upsert: true }
             const updateDoc = {
                 $set: {
@@ -164,10 +203,10 @@ async function run() {
                 }
             }
             console.log(updateDoc, id, filter)
-            const result = await bookCollection.updateOne(filter,updateDoc,options)
+            const result = await bookCollection.updateOne(filter, updateDoc, options)
             res.send(result)
         })
-        
+
 
 
         // delete related api 
