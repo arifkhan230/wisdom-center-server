@@ -9,7 +9,10 @@ const port = process.env.PORT || 5000;
 
 
 app.use(cors({
-    origin: 'http://localhost:5173',
+    origin: [
+        'https://wisdom-center-407db.firebaseapp.com',
+        'https://wisdom-center-407db.web.app'
+    ],
     credentials: true
 }))
 app.use(express.json())
@@ -44,15 +47,15 @@ const logger = (req, res, next) => {
 
 const verifyToken = (req, res, next) => {
     const token = req.cookies?.token;
-    if(!token){
-        return res.status(401).send({message: 'unauthorized access'})
+    if (!token) {
+        return res.status(401).send({ message: 'unauthorized access' })
     }
-    jwt.verify(token, process.env.SECRET_ACCESS_TOKEN,(err,decoded)=>{
-        if(err){
-            return res.status(401).send({message: 'unauthorized access'})
+    jwt.verify(token, process.env.SECRET_ACCESS_TOKEN, (err, decoded) => {
+        if (err) {
+            return res.status(401).send({ message: 'unauthorized access' })
         }
-        else{
-            req.user= decoded
+        else {
+            req.user = decoded
             next()
         }
     })
@@ -73,15 +76,20 @@ async function run() {
             res
                 .cookie('token', token, {
                     httpOnly: true,
-                    secure: false
+                    secure: process.env.NODE_ENV === "production" ? true : false,
+                    sameSite: process.env.NODE_ENV === "production" ? "none" : "strict"
                 })
                 .send({ success: true })
         })
 
-        app.post('/logout', async(req,res)=>{
+        app.post('/logout', async (req, res) => {
             const user = req.user;
             console.log(user)
-            res.clearCookie('token', {maxAge: 0}).send({success: true})
+            res.clearCookie('token', {
+                maxAge: 0,
+                secure: process.env.NODE_ENV === "production" ? true : false,
+                sameSite: process.NODE_ENV === "production" ? "none" : "strict"
+            }).send({ success: true })
         })
 
 
@@ -117,8 +125,8 @@ async function run() {
         app.get('/user/borrowed-book', verifyToken, async (req, res) => {
             const email = req.query.email;
             console.log(req.user)
-            if(req.user.email !== req.query.email){
-                return res.status(403).send({message: "Access Forbidden"})
+            if (req.user.email !== req.query.email) {
+                return res.status(403).send({ message: "Access Forbidden" })
             }
 
             let query = {}
@@ -131,7 +139,7 @@ async function run() {
 
         // post related api
 
-        app.post('/add-book', logger,verifyToken, async (req, res) => {
+        app.post('/add-book', logger, verifyToken, async (req, res) => {
             const book = req.body;
             const result = await bookCollection.insertOne(book);
             res.send(result)
@@ -140,9 +148,9 @@ async function run() {
         app.post('/user/borrowed-book', async (req, res) => {
             const borrowedBook = req.body;
             console.log(borrowedBook._id)
-            const filter = await borrowedBookCollection.findOne({name: borrowedBook.name})
-            if(filter){
-                return res.status(400).send({message: 'product already exist'})
+            const filter = await borrowedBookCollection.findOne({ name: borrowedBook.name, email: borrowedBook.email })
+            if (filter) {
+                return res.status(400).send({ message: 'product already exist' })
             }
             const result = await borrowedBookCollection.insertOne(borrowedBook);
             res.send(result)
@@ -168,16 +176,16 @@ async function run() {
         })
 
         // upgrading quantity
-        app.patch('/book/:id', async (req, res) => {
+        app.patch('/book/:name', async (req, res) => {
             const updateQuantity = req.body.quantity;
             // console.log(updateQuantity)
-            const id = req.params.id;
-            console.log(id)
-            const query = { _id: new ObjectId(id) }
+            const name = req.params.name;
+            console.log(name)
+            const query = { name: name }
             // console.log(query)
             const updateDoc = {
                 $set: {
-                    quantity: updateQuantity
+                    quantity: parseInt(updateQuantity)
                 }
             }
             // console.log(updateDoc)
@@ -185,7 +193,7 @@ async function run() {
             res.send(result)
         })
 
-        app.put('/books/:id', async (req, res) => {
+        app.put('/books/:id', verifyToken, async (req, res) => {
             const updateBook = req.body;
             const id = req.params.id;
             console.log(id)
@@ -211,9 +219,9 @@ async function run() {
 
         // delete related api 
 
-        app.delete('/user/borrowed-book/:id', async (req, res) => {
-            const id = req.params.id;
-            const query = { _id: id };
+        app.delete('/user/borrowed-book/:name', async (req, res) => {
+            const name = req.params.name;
+            const query = { name: name };
             const result = await borrowedBookCollection.deleteOne(query);
             res.send(result);
         })
