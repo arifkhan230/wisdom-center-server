@@ -10,8 +10,8 @@ const port = process.env.PORT || 5000;
 
 app.use(cors({
     origin: [
-        'https://wisdom-center-407db.firebaseapp.com',
-        'https://wisdom-center-407db.web.app'
+        'http://localhost:5173',
+        'https://flat-hill.surge.sh'
     ],
     credentials: true
 }))
@@ -37,6 +37,7 @@ const client = new MongoClient(uri, {
 const categoryCollection = client.db('libraryDb').collection('category');
 const bookCollection = client.db('libraryDb').collection('books');
 const borrowedBookCollection = client.db('libraryDb').collection('borrowedBooks');
+const usersCollection = client.db('libraryDb').collection('users');
 
 
 // middlewares
@@ -65,8 +66,8 @@ const verifyToken = (req, res, next) => {
 
 async function run() {
     try {
-        await client.connect();
-        await client.db("admin").command({ ping: 1 });
+        // await client.connect();
+        // await client.db("admin").command({ ping: 1 });
 
 
         // jwt related api
@@ -88,8 +89,40 @@ async function run() {
             res.clearCookie('token', {
                 maxAge: 0,
                 secure: process.env.NODE_ENV === "production" ? true : false,
-                sameSite: process.NODE_ENV === "production" ? "none" : "strict"
+                sameSite: process.env.NODE_ENV === "production" ? "none" : "strict"
             }).send({ success: true })
+        })
+
+
+        // user related api
+
+        app.post('/users', async (req, res) => {
+            const user = req.body;
+            const query = { email: user.email }
+            const isExist = await usersCollection.findOne(query);
+            if (isExist) {
+                return res.send({ message: 'user already exist', insertedId: null })
+            }
+            const result = await usersCollection.insertOne(user);
+            res.send(result)
+        })
+
+
+        // admin
+
+        app.get('/users/admin/:email', verifyToken, async (req, res) => {
+            const email = req.params.email;
+            // if (email !== req.decoded.email) {
+            //     return res.status(403).send({ message: 'forbidden access' })
+            // }
+            const query = { email: email };
+            const user = await usersCollection.findOne(query);
+
+            let admin = false;
+            if (user) {
+                admin = user?.role === 'admin'
+            }
+            res.send({ admin });
         })
 
 
